@@ -1,0 +1,182 @@
+- name: Setup home server
+  hosts: home_server
+  become: true
+  vars:
+    root_dir: "/mnt/hdd"
+    config_dir: "{{ root_dir }}/config"
+    data_dir: "{{ root_dir }}/data"
+    group: "mediacenter"
+    services:
+      - sonarr
+      - radarr
+      - bazarr
+      - jackett
+      - qbittorrent
+      - jellyfin
+    data_subdirs:
+      - torrents
+      - media
+    timezone: "Europe/Madrid"
+
+  handlers:
+    - name: Restart SSH service
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
+
+  tasks:
+    - name: Update and upgrade packages
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+        cache_valid_time: 3600
+
+    - name: Copy SSH public key
+      ansible.posix.authorized_key:
+        user: "{{ ansible_user }}"
+        state: present
+        key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+
+    - name: Copy SSH config file
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/sshd_config"
+        dest: /etc/ssh/sshd_config
+        mode: "0644"
+        backup: true
+      notify: Restart SSH service
+
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+        update_cache: true
+
+    - name: Create the keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Add Docker APT repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Install Docker packages
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+    - name: Add the Docker group
+      ansible.builtin.group:
+        name: docker
+        state: present
+
+    - name: Add the current user to the Docker group
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true
+        state: present
+
+    - name: Create root dir
+      ansible.builtin.file:
+        path: "{{ root_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Mount hdd to root dir
+      ansible.posix.mount:
+        src: "/dev/sda1"
+        path: "{{ root_dir }}"
+        fstype: "ext4"
+        state: mounted
+
+    - name: Create media group
+      ansible.builtin.group:
+        name: "{{ group }}"
+        state: present
+
+    - name: Create and add users to media group
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: "{{ group }}"
+        append: true
+        state: present
+      loop: "{{ [ansible_user] + services }}"
+
+    - name: Create root directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ group }}"
+        mode: "0775"
+      loop:
+        - "{{ config_dir }}"
+        - "{{ data_dir }}"
+
+    - name: Create services config directories
+      ansible.builtin.file:
+        path: "{{ config_dir }}/{{ item }}"
+        state: directory
+        owner: "{{ item }}"
+        group: "{{ group }}"
+        mode: "0775"
+      loop: "{{ services }}"
+
+    - name: Create data directories
+      ansible.builtin.file:
+        path: "{{ data_dir }}/{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ group }}"
+        mode: "0775"
+      loop: "{{ data_subdirs }}"
+
+    - name: Retrieve user IDs
+      ansible.builtin.command: "id -u {{ item }}"
+      loop: "{{ [ansible_user] + services }}"
+      register: user_ids
+      changed_when: false
+
+    - name: Retrieve media group ID
+      ansible.builtin.command: "getent group {{ group }}"
+      register: group_info
+      changed_when: false
+
+    - name: Generate docker-compose.yaml
+      ansible.builtin.template:
+        src: docker-compose.yaml.j2
+        dest: "{{ root_dir }}/docker-compose.yaml"
+        owner: "{{ ansible_user }}"
+        group: "{{ group }}"
+        mode: "0644"
+      vars:
+        sonarr_uid: "{{ user_ids.results[1].stdout }}"
+        radarr_uid: "{{ user_ids.results[2].stdout }}"
+        bazarr_uid: "{{ user_ids.results[3].stdout }}"
+        jackett_uid: "{{ user_ids.results[4].stdout }}"
+        qbittorrent_uid: "{{ user_ids.results[5].stdout }}"
+        current_uid: "{{ user_ids.results[0].stdout }}"
+        mediacenter_gid: "{{ group_info.stdout.split(':')[2] }}"
+
+    - name: Run docker-compose
+      ansible.builtin.command:
+        cmd: "docker compose up -d"
+        chdir: "{{ root_dir }}"
+      changed_when: false
