@@ -10,7 +10,7 @@
       - sonarr
       - radarr
       - bazarr
-      - jackett
+      - prowlarr
       - qbittorrent
       - jellyfin
     data_subdirs:
@@ -170,7 +170,7 @@
         sonarr_uid: "{{ user_ids.results[1].stdout }}"
         radarr_uid: "{{ user_ids.results[2].stdout }}"
         bazarr_uid: "{{ user_ids.results[3].stdout }}"
-        jackett_uid: "{{ user_ids.results[4].stdout }}"
+        prowlarr_uid: "{{ user_ids.results[4].stdout }}"
         qbittorrent_uid: "{{ user_ids.results[5].stdout }}"
         current_uid: "{{ user_ids.results[0].stdout }}"
         mediacenter_gid: "{{ group_info.stdout.split(':')[2] }}"

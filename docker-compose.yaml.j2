@@ -43,18 +43,18 @@ services:
       - "6767:6767"
     restart: unless-stopped
 
-  jackett:
-    image: lscr.io/linuxserver/jackett:latest
-    container_name: jackett
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:develop
+    container_name: prowlarr
     environment:
-      - PUID={{ jackett_uid }}
+      - PUID={{ prowlarr_uid }}
       - PGID={{ mediacenter_gid }}
       - UMASK=002
-      - TZ={{ timezone }}  
+      - TZ={{ timezone }}
     volumes:
-      - {{ config_dir }}/jackett:/config
+      - {{ config_dir }}/prowlarr:/config
     ports:
-      - 9117:9117
+      - "9696:9696"
     restart: unless-stopped
 
   jellyfin:
