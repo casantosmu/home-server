@@ -1,0 +1,13 @@
+#!/bin/bash
+
+IP=$(curl -s https://ifconfig.me)
+
+curl -X PUT "https://api.cloudflare.com/client/v4/zones/{{ zone_id }}/dns_records/{{ dns_record_id }}" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer {{ api_token }}" \
+  -d '{
+  "name": "{{ domain }}",
+  "proxied": false,
+  "content": "'"$IP"'",
+  "type": "A"
+}'

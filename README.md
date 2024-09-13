@@ -15,7 +15,18 @@
 
    Replace `SERVER_IP` with your server's IP and `SSH_USER` with your SSH username.
 
-3. **Run the playbook:**
+3. **Create the secrets file:**
+
+   The Cloudflare script updates your dynamic IP to ensure your domain always points to your server. Create `secrets.yaml` with your Cloudflare details:
+
+   ```yaml
+   zone_id: "YOUR_ZONE_ID"
+   dns_record_id: "YOUR_DNS_RECORD_ID"
+   api_token: "YOUR_API_TOKEN"
+   domain: "yourdomain.com"
+   ```
+
+4. **Run the playbook:**
 
    ```bash
    ansible-playbook playbook.yaml -i inventory.ini --ask-become-pass --ask-pass

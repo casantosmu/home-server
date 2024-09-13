@@ -1,11 +1,15 @@
 - name: Setup home server
   hosts: home_server
   become: true
+  vars_files:
+    - secrets.yaml
   vars:
     root_dir: "/mnt/hdd"
     config_dir: "{{ root_dir }}/config"
     data_dir: "{{ root_dir }}/data"
-    group: "mediacenter"
+    logs_dir: "/home/{{ ansible_user }}/logs"
+    scripts_dir: "/home/{{ ansible_user }}/scripts"
+    media_group: "mediacenter"
     services:
       - sonarr
       - radarr
@@ -45,13 +49,60 @@
         backup: true
       notify: Restart SSH service
 
+    - name: Create user directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+      loop:
+        - "{{ logs_dir }}"
+        - "{{ scripts_dir }}"
+
     - name: Install required packages
       ansible.builtin.apt:
         name:
+          - ufw
           - ca-certificates
           - curl
         state: present
         update_cache: true
+
+    - name: Allow traffic from local network
+      community.general.ufw:
+        rule: allow
+        from_ip: 192.168.0.0/24
+
+    - name: Allow traffic to HTTP
+      community.general.ufw:
+        rule: allow
+        port: 80
+        proto: tcp
+
+    - name: Allow traffic to HTTPS
+      community.general.ufw:
+        rule: allow
+        port: 443
+        proto: tcp
+
+    - name: Deny all incoming traffic
+      community.general.ufw:
+        default: deny
+        direction: incoming
+
+    - name: Allow all outgoing traffic
+      community.general.ufw:
+        default: allow
+        direction: outgoing
+
+    - name: Set UFW logging to 'low'
+      community.general.ufw:
+        logging: low
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
 
     - name: Create the keyrings directory
       ansible.builtin.file:
@@ -108,13 +159,13 @@
 
     - name: Create media group
       ansible.builtin.group:
-        name: "{{ group }}"
+        name: "{{ media_group }}"
         state: present
 
     - name: Create and add users to media group
       ansible.builtin.user:
         name: "{{ item }}"
-        groups: "{{ group }}"
+        groups: "{{ media_group }}"
         append: true
         state: present
       loop: "{{ [ansible_user] + services }}"
@@ -124,7 +175,7 @@
         path: "{{ item }}"
         state: directory
         owner: "{{ ansible_user }}"
-        group: "{{ group }}"
+        group: "{{ media_group }}"
         mode: "0775"
       loop:
         - "{{ config_dir }}"
@@ -135,7 +186,7 @@
         path: "{{ config_dir }}/{{ item }}"
         state: directory
         owner: "{{ item }}"
-        group: "{{ group }}"
+        group: "{{ media_group }}"
         mode: "0775"
       loop: "{{ services }}"
 
@@ -144,7 +195,7 @@
         path: "{{ data_dir }}/{{ item }}"
         state: directory
         owner: "{{ ansible_user }}"
-        group: "{{ group }}"
+        group: "{{ media_group }}"
         mode: "0775"
       loop: "{{ data_subdirs }}"
 
@@ -155,8 +206,8 @@
       changed_when: false
 
     - name: Retrieve media group ID
-      ansible.builtin.command: "getent group {{ group }}"
-      register: group_info
+      ansible.builtin.command: "getent group {{ media_group }}"
+      register: media_group_info
       changed_when: false
 
     - name: Generate docker-compose.yaml
@@ -164,7 +215,7 @@
         src: docker-compose.yaml.j2
         dest: "{{ root_dir }}/docker-compose.yaml"
         owner: "{{ ansible_user }}"
-        group: "{{ group }}"
+        group: "{{ media_group }}"
         mode: "0644"
       vars:
         sonarr_uid: "{{ user_ids.results[1].stdout }}"
@@ -173,10 +224,24 @@
         prowlarr_uid: "{{ user_ids.results[4].stdout }}"
         qbittorrent_uid: "{{ user_ids.results[5].stdout }}"
         current_uid: "{{ user_ids.results[0].stdout }}"
-        mediacenter_gid: "{{ group_info.stdout.split(':')[2] }}"
+        mediacenter_gid: "{{ media_group_info.stdout.split(':')[2] }}"
 
     - name: Run docker-compose
       ansible.builtin.command:
         cmd: "docker compose up -d"
         chdir: "{{ root_dir }}"
       changed_when: false
+
+    - name: Copy Cloudflare Dynamic DNS script
+      ansible.builtin.template:
+        src: ./cloudflare-ddns.sh.j2
+        dest: "{{ scripts_dir }}/cloudflare-ddns.sh"
+        mode: '0755'
+
+    - name: Schedule daily Cloudflare IP update
+      ansible.builtin.cron:
+        name: "Cloudflare Dynamic DNS Update"
+        user: "{{ ansible_user }}"
+        minute: 0
+        hour: 8
+        job: "{{ scripts_dir }}/cloudflare-ddns.sh >> {{ logs_dir }}/cloudflare-ddns.log 2>&1"
