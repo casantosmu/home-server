@@ -1,0 +1,23 @@
+- name: Create root dir
+  ansible.builtin.file:
+    path: "{{ root_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Mount hdd to root dir
+  ansible.posix.mount:
+    src: "/dev/sda1"
+    path: "{{ root_dir }}"
+    fstype: "ext4"
+    state: mounted
+
+- name: Create user directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+  loop:
+    - "{{ logs_dir }}"
+    - "{{ scripts_dir }}"

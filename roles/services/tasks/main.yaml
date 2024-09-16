@@ -1,0 +1,64 @@
+- name: Create media group
+  ansible.builtin.group:
+    name: "{{ media_group }}"
+    state: present
+
+- name: Create and add users to media group
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: "{{ media_group }}"
+    append: true
+    state: present
+  loop: "{{ [ansible_user] + services }}"
+
+- name: Create config directories
+  ansible.builtin.file:
+    path: "{{ config_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ item }}"
+    group: "{{ media_group }}"
+    mode: "0775"
+  loop: "{{ services }}"
+
+- name: Create data directories
+  ansible.builtin.file:
+    path: "{{ data_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ media_group }}"
+    mode: "0775"
+  loop: "{{ data_subdirs }}"
+
+- name: Retrieve user IDs
+  ansible.builtin.command: "id -u {{ item }}"
+  loop: "{{ [ansible_user] + services }}"
+  register: user_ids
+  changed_when: false
+
+- name: Retrieve media group ID
+  ansible.builtin.command: "getent group {{ media_group }}"
+  register: media_group_info
+  changed_when: false
+
+- name: Generate docker-compose.yaml
+  ansible.builtin.template:
+    src: docker-compose.yaml.j2
+    dest: "{{ root_dir }}/docker-compose.yaml"
+    owner: "{{ ansible_user }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+  vars:
+    sonarr_uid: "{{ user_ids.results[1].stdout }}"
+    radarr_uid: "{{ user_ids.results[2].stdout }}"
+    bazarr_uid: "{{ user_ids.results[3].stdout }}"
+    prowlarr_uid: "{{ user_ids.results[4].stdout }}"
+    qbittorrent_uid: "{{ user_ids.results[5].stdout }}"
+    current_uid: "{{ user_ids.results[0].stdout }}"
+    mediacenter_gid: "{{ media_group_info.stdout.split(':')[2] }}"
+    timezone: "Europe/Madrid"
+
+- name: Run docker-compose
+  ansible.builtin.command:
+    cmd: "docker compose up -d"
+    chdir: "{{ root_dir }}"
+  changed_when: false

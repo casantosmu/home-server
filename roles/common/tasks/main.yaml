@@ -1,0 +1,15 @@
+- name: Update and upgrade packages
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: dist
+    cache_valid_time: 3600
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - ca-certificates
+      - curl
+      - fail2ban
+    state: present
+    update_cache: true

@@ -1,0 +1,5 @@
+root_dir: "/mnt/hdd"
+config_dir: "{{ root_dir }}/config"
+data_dir: "{{ root_dir }}/data"
+logs_dir: "/home/{{ ansible_user }}/logs"
+scripts_dir: "/home/{{ ansible_user }}/scripts"

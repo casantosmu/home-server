@@ -1,0 +1,11 @@
+media_group: "mediacenter"
+services:
+  - sonarr
+  - radarr
+  - bazarr
+  - prowlarr
+  - qbittorrent
+  - jellyfin
+data_subdirs:
+  - torrents
+  - media

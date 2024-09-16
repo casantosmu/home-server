@@ -1,0 +1,13 @@
+- name: Copy Cloudflare Dynamic DNS script
+  ansible.builtin.template:
+    src: cloudflare-ddns.sh.j2
+    dest: "{{ scripts_dir }}/cloudflare-ddns.sh"
+    mode: "0755"
+
+- name: Schedule daily Cloudflare IP update
+  ansible.builtin.cron:
+    name: "Cloudflare Dynamic DNS Update"
+    user: "{{ ansible_user }}"
+    minute: 0
+    hour: 8
+    job: "{{ scripts_dir }}/cloudflare-ddns.sh >> {{ logs_dir }}/cloudflare-ddns.log 2>&1"
